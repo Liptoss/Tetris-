@@ -1,188 +1,202 @@
 const COLS = 6;
-const ROWS = 7;
-const SIZE = 64;
+const VISIBLE_ROWS = 7;
+const HIDDEN_ROWS = 3;
+const ROWS = VISIBLE_ROWS + HIDDEN_ROWS;
+const SIZE = 60;
 
 const canvas = document.getElementById("game");
+canvas.width = COLS * SIZE;
+canvas.height = VISIBLE_ROWS * SIZE;
 const ctx = canvas.getContext("2d");
 
-canvas.width = COLS * SIZE;
-canvas.height = ROWS * SIZE;
+let board = Array.from({ length: ROWS }, () =>
+  Array(COLS).fill(0)
+);
 
-let grid = Array.from({ length: ROWS }, () => Array(COLS).fill(null));
-
-let score = 0;
-let unlockedLevel = 0;
-
-const image = new Image();
-image.src = "images/Naturachimie.png";
-
-const INGREDIENT_COUNT = 6; // adapte selon ton image
-const SPRITE_HEIGHT = 128;  // hauteur d’un ingrédient dans l’image
-const SPRITE_WIDTH = 128;
-
+let unlockedLevels = [1];
 let currentPair = null;
 
-function createPair() {
-  return {
-    x: Math.floor(COLS / 2),
-    y: 0,
-    rotation: 0,
-    blocks: [
-      { level: unlockedLevel },
-      { level: unlockedLevel }
-    ]
-  };
-}
+const colors = [
+  "#2ecc71", // vert
+  "#f1c40f", // jaune
+  "#e67e22", // orange
+  "#e74c3c",
+  "#9b59b6",
+  "#00ffff",
+  "#ff00ff"
+];
 
-function drawBlock(level, x, y) {
-  ctx.drawImage(
-    image,
-    0,
-    level * SPRITE_HEIGHT,
-    SPRITE_WIDTH,
-    SPRITE_HEIGHT,
-    x * SIZE,
-    y * SIZE,
-    SIZE,
-    SIZE
-  );
-}
-
-function drawGrid() {
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-  for (let y = 0; y < ROWS; y++) {
-    for (let x = 0; x < COLS; x++) {
-      if (grid[y][x] !== null) {
-        drawBlock(grid[y][x], x, y);
-      }
-    }
-  }
-
-  if (currentPair) {
-    const positions = getPairPositions();
-    positions.forEach((pos, i) => {
-      drawBlock(currentPair.blocks[i].level, pos.x, pos.y);
-    });
-  }
-}
-
-function getPairPositions() {
-  const { x, y, rotation } = currentPair;
-
-  if (rotation === 0) {
-    return [
-      { x: x, y: y },
-      { x: x, y: y - 1 }
+class Pair {
+  constructor() {
+    this.x = Math.floor(COLS / 2);
+    this.y = 0;
+    this.rotation = 0;
+    this.levels = [
+      randomLevel(),
+      randomLevel()
     ];
   }
-  if (rotation === 1) {
+
+  getBlocks() {
+    const second = [
+      { x: 0, y: 0 },
+      { x: 0, y: -1 },
+      { x: 1, y: 0 },
+      { x: 0, y: 1 }
+    ][this.rotation];
+
     return [
-      { x: x, y: y },
-      { x: x + 1, y: y }
-    ];
-  }
-  if (rotation === 2) {
-    return [
-      { x: x, y: y },
-      { x: x, y: y + 1 }
-    ];
-  }
-  if (rotation === 3) {
-    return [
-      { x: x, y: y },
-      { x: x - 1, y: y }
+      { x: this.x, y: this.y, level: this.levels[0] },
+      { x: this.x + second.x, y: this.y + second.y, level: this.levels[1] }
     ];
   }
 }
 
-function canMove(dx) {
-  const positions = getPairPositions();
-  return positions.every(pos => {
-    const nx = pos.x + dx;
-    return nx >= 0 && nx < COLS;
+function randomLevel() {
+  return unlockedLevels[Math.floor(Math.random() * unlockedLevels.length)];
+}
+
+function spawn() {
+  currentPair = new Pair();
+  if (!canMove(0,0)) {
+    alert("Game Over");
+    board = Array.from({ length: ROWS }, () =>
+      Array(COLS).fill(0)
+    );
+    unlockedLevels = [1];
+  }
+}
+
+function canMove(dx, dy) {
+  return currentPair.getBlocks().every(b => {
+    let nx = b.x + dx;
+    let ny = b.y + dy;
+    return (
+      nx >= 0 &&
+      nx < COLS &&
+      ny < ROWS &&
+      board[ny]?.[nx] === 0
+    );
   });
 }
 
 function move(dx) {
-  if (canMove(dx)) {
-    currentPair.x += dx;
-  }
+  if (canMove(dx, 0)) currentPair.x += dx;
 }
 
 function rotate() {
-  currentPair.rotation = (currentPair.rotation + 1) % 4;
+  let old = currentPair.rotation;
+  currentPair.rotation = (old + 1) % 4;
+  if (!canMove(0,0)) currentPair.rotation = old;
 }
 
 function drop() {
-  const positions = getPairPositions();
+  while (canMove(0,1)) {
+    currentPair.y++;
+  }
 
-  positions.forEach((pos, i) => {
-    let y = pos.y;
-    while (y + 1 < ROWS && grid[y + 1][pos.x] === null) {
-      y++;
-    }
-    grid[y][pos.x] = currentPair.blocks[i].level;
+  currentPair.getBlocks().forEach(b => {
+    if (b.y >= 0)
+      board[b.y][b.x] = b.level;
   });
 
-  resolveMatches();
-  currentPair = createPair();
+  resolveBoard();
+  spawn();
 }
 
-function resolveMatches() {
-  let visited = Array.from({ length: ROWS }, () => Array(COLS).fill(false));
+function resolveBoard() {
+  let changed;
+  do {
+    changed = false;
+    let visited = Array.from({ length: ROWS }, () =>
+      Array(COLS).fill(false)
+    );
 
-  for (let y = 0; y < ROWS; y++) {
-    for (let x = 0; x < COLS; x++) {
-      if (grid[y][x] !== null && !visited[y][x]) {
-        let cluster = [];
-        floodFill(x, y, grid[y][x], visited, cluster);
+    for (let y = 0; y < ROWS; y++) {
+      for (let x = 0; x < COLS; x++) {
+        if (board[y][x] === 0 || visited[y][x]) continue;
 
-        if (cluster.length >= 3) {
-          cluster.forEach(pos => {
-            grid[pos.y][pos.x] = null;
-          });
+        let group = floodFill(x,y,board[y][x],visited);
 
-          const newLevel = grid[y][x] + 1;
-          unlockedLevel = Math.max(unlockedLevel, newLevel);
-          score += Math.pow(3, newLevel);
+        if (group.length >= 3) {
+          changed = true;
+          group.forEach(g => board[g.y][g.x] = 0);
 
-          document.getElementById("score").innerText = "Score : " + score;
+          let highest = group.reduce((a,b)=> a.y > b.y ? a : b);
+          board[highest.y][highest.x] = group[0].level + 1;
+
+          let newLevel = group[0].level + 1;
+          if (!unlockedLevels.includes(newLevel)) {
+            unlockedLevels.push(newLevel);
+          }
         }
       }
     }
+  } while (changed);
+}
+
+function floodFill(x,y,level,visited) {
+  let stack = [{x,y}];
+  let group = [];
+  while (stack.length) {
+    let {x,y} = stack.pop();
+    if (
+      x<0||x>=COLS||
+      y<0||y>=ROWS||
+      visited[y][x]||
+      board[y][x]!==level
+    ) continue;
+
+    visited[y][x]=true;
+    group.push({x,y,level});
+
+    stack.push({x:x+1,y});
+    stack.push({x:x-1,y});
+    stack.push({x,y+1});
+    stack.push({x,y-1});
+  }
+  return group;
+}
+
+function drawCell(x,y,level) {
+  if (level === 0) return;
+  if (y < HIDDEN_ROWS) return;
+
+  ctx.fillStyle = colors[level-1] || "white";
+  ctx.fillRect(
+    x*SIZE,
+    (y-HIDDEN_ROWS)*SIZE,
+    SIZE-2,
+    SIZE-2
+  );
+}
+
+function draw() {
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+
+  for (let y=0;y<ROWS;y++)
+    for (let x=0;x<COLS;x++)
+      drawCell(x,y,board[y][x]);
+
+  if (currentPair) {
+    currentPair.getBlocks().forEach(b=>{
+      drawCell(b.x,b.y,b.level);
+    });
   }
 }
 
-function floodFill(x, y, level, visited, cluster) {
-  if (
-    x < 0 || x >= COLS ||
-    y < 0 || y >= ROWS ||
-    visited[y][x] ||
-    grid[y][x] !== level
-  ) return;
-
-  visited[y][x] = true;
-  cluster.push({ x, y });
-
-  floodFill(x + 1, y, level, visited, cluster);
-  floodFill(x - 1, y, level, visited, cluster);
-  floodFill(x, y + 1, level, visited, cluster);
-  floodFill(x, y - 1, level, visited, cluster);
-}
-
-document.addEventListener("keydown", e => {
+document.addEventListener("keydown", e=>{
   if (!currentPair) return;
-
-  if (e.key === "ArrowLeft") move(-1);
-  if (e.key === "ArrowRight") move(1);
-  if (e.key === "ArrowUp") rotate();
-  if (e.key === "ArrowDown") drop();
-
-  drawGrid();
+  if (e.key==="ArrowLeft") move(-1);
+  if (e.key==="ArrowRight") move(1);
+  if (e.key==="ArrowUp") rotate();
+  if (e.key==="ArrowDown") drop();
 });
 
-image.onload = () => {
-  currentPair = createPair();
-  drawGrid();
-};
+function loop() {
+  draw();
+  requestAnimationFrame(loop);
+}
+
+spawn();
+loop();
