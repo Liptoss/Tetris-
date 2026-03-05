@@ -139,21 +139,21 @@ function floodFill(x,y,level,visited) {
   let stack = [{x,y}];
   let group = [];
   while (stack.length) {
-    let {x,y} = stack.pop();
+    let [cx, cy] = stack.pop();
     if (
-      x<0||x>=COLS||
-      y<0||y>=ROWS||
-      visited[y][x]||
-      board[y][x]!==level
+      cx<0||cx>=COLS||
+      cy<0||cy>=ROWS||
+      visited[cy][cx]||
+      board[cy][cx]!==level
     ) continue;
 
-    visited[y][x]=true;
-    group.push({x,y,level});
+    visited[cy][cx]=true;
+    group.push({cx,cy,level});
 
-    stack.push({x:x+1,y});
-    stack.push({x:x-1,y});
-    stack.push({x,y+1});
-    stack.push({x,y-1});
+    stack.push([cx+1,cy]);
+    stack.push([cx-1,cy]);
+    stack.push([cx,cy+1]);
+    stack.push([cx,cy-1]);
   }
   return group;
 }
